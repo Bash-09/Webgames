@@ -22,6 +22,7 @@ pub async fn serve(config: Config, db: Option<PgPool>) -> Result<(), Box<dyn std
         .merge(site::router(ui_source))
         .merge(api::router(db));
 
+    println!("Serving on http://127.0.0.1:8080");
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(listener, app).await?;
 

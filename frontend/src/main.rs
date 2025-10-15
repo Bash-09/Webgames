@@ -11,16 +11,29 @@ fn main() -> eframe::Result {
             .with_inner_size([400.0, 300.0])
             .with_min_inner_size([300.0, 220.0])
             .with_icon(
-                // NOTE: Adding an icon is optional
                 eframe::icon_data::from_png_bytes(&include_bytes!("../assets/icon-256.png")[..])
                     .expect("Failed to load icon"),
             ),
         ..Default::default()
     };
+
     eframe::run_native(
         "eframe template",
         native_options,
-        Box::new(|cc| Ok(Box::new(frontend::TemplateApp::new(cc)))),
+        Box::new(|cc| {
+            let mut app = Box::new(frontend::App::new(cc));
+            let ctx = cc.egui_ctx.clone();
+
+            let mut task_handler = app.get_task_handler();
+            std::thread::spawn(|| {
+                let runtime = tokio::runtime::Runtime::new().expect("Couldn't spawn task thread.");
+                runtime.block_on(async move {
+                    task_handler.run(ctx).await;
+                });
+            });
+
+            Ok(app)
+        }),
     )
 }
 
@@ -28,6 +41,7 @@ fn main() -> eframe::Result {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
+    use frontend::tasks;
 
     // Redirect `log` message to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
@@ -46,11 +60,23 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("the_canvas_id was not a HtmlCanvasElement");
 
+        let (requester, mut handler) = tasks::create_manager();
+
         let start_result = eframe::WebRunner::new()
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(frontend::TemplateApp::new(cc)))),
+                Box::new(move |cc| {
+                    let mut app = Box::new(frontend::App::new(cc));
+                    app.with_task_requester(requester);
+
+                    let ctx = cc.egui_ctx.clone();
+                    n0_future::task::spawn(async move {
+                        handler.run(ctx).await;
+                    });
+
+                    Ok(app)
+                }),
             )
             .await;
 

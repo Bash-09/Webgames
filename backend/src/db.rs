@@ -3,6 +3,10 @@ use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use crate::config::Config;
 
 pub async fn create_connection(config: &Config) -> Option<Result<Pool<Postgres>, sqlx::Error>> {
+    if config.db_config.no_db {
+        return None;
+    }
+
     Some(
         PgPoolOptions::new()
             .max_connections(5)

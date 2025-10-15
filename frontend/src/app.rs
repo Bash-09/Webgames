@@ -1,41 +1,82 @@
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
-    // Example stuff:
-    label: String,
+use crate::tasks::{self, TaskHandler, TaskRequester};
 
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+pub enum Event {
+    None,
+    TaskHandlerInitialised,
 }
 
-impl Default for TemplateApp {
+pub enum Task {}
+
+impl Task {
+    pub async fn run(&mut self) -> Event {
+        Event::None
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct App {
+    #[serde(skip)]
+    handler_initialised: bool,
+    #[serde(skip)]
+    tasks: Option<TaskRequester>,
+}
+
+impl Default for App {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
+            tasks: None,
+            handler_initialised: false,
         }
     }
 }
 
-impl TemplateApp {
-    /// Called once before the first frame.
+impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Default::default()
         }
     }
+
+    pub fn get_task_handler(&mut self) -> TaskHandler {
+        assert!(self.tasks.is_none(), "Already has a task requester.");
+
+        let (req, handler) = tasks::create_manager();
+        self.tasks = Some(req);
+        handler
+    }
+
+    pub fn with_task_requester(&mut self, req: TaskRequester) {
+        assert!(self.tasks.is_none(), "Already has a task requester.");
+        self.tasks = Some(req);
+    }
+
+    fn handle_events(&mut self) {
+        while let Some(event) = self.tasks.as_mut().unwrap().next() {
+            self.handle_event(event);
+        }
+    }
+
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::None => {}
+            Event::TaskHandlerInitialised => self.handler_initialised = true,
+        }
+    }
+
+    fn send_task(&mut self, task: Task) {
+        self.tasks
+            .as_mut()
+            .unwrap()
+            .send
+            .send(task)
+            .expect("Couldn't send task.");
+    }
 }
 
-impl eframe::App for TemplateApp {
+impl eframe::App for App {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
@@ -43,12 +84,9 @@ impl eframe::App for TemplateApp {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
+        self.handle_events();
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
-
             egui::MenuBar::new().ui(ui, |ui| {
                 // NOTE: no File->Quit on web pages!
                 let is_web = cfg!(target_arch = "wasm32");
@@ -66,25 +104,11 @@ impl eframe::App for TemplateApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
+            ui.label(if self.handler_initialised {
+                "Task handler initialised."
+            } else {
+                "Task handler has not yet responded..."
             });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
-
-            ui.separator();
-
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/main/",
-                "Source code."
-            ));
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 powered_by_egui_and_eframe(ui);

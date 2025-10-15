@@ -17,7 +17,7 @@ async fn main() {
 
     let db = db::create_connection(&config)
         .await
-        .expect("Couldn't connect to database.");
+        .map(|db| db.expect("Couldn't connect to database."));
 
     http::serve(config, db)
         .await

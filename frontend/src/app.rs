@@ -1,15 +1,39 @@
+use std::time::Duration;
+
+use n0_future::TryFutureExt;
+
 use crate::tasks::{self, TaskHandler, TaskRequester};
 
 pub enum Event {
     None,
     TaskHandlerInitialised,
+    Pong(Duration, reqwest::Result<String>),
 }
 
-pub enum Task {}
+pub enum Task {
+    Ping,
+}
 
 impl Task {
     pub async fn run(&mut self) -> Event {
+        match self {
+            Task::Ping => {
+                let start = std::time::Instant::now();
+                let pong = Self::run_ping().await;
+                let fin = std::time::Instant::now();
+                let dur = fin.duration_since(start);
+                return Event::Pong(dur, pong);
+            }
+        }
+
         Event::None
+    }
+
+    async fn run_ping() -> reqwest::Result<String> {
+        reqwest::get("http://127.0.0.1:8080/api/ping")
+            .await?
+            .text()
+            .await
     }
 }
 

@@ -6,9 +6,9 @@ use axum::{
 use sqlx::PgPool;
 
 pub fn router(_db: Option<PgPool>) -> Router {
-    Router::new().route("/api/get_test", get(get_test))
+    Router::new().route("/api/ping", get(get_ping))
 }
 
-async fn get_test() -> Response {
-    "Get tested :sunglasses:".into_response()
+async fn get_ping() -> Response {
+    "Get ponged :sunglasses:".into_response()
 }
